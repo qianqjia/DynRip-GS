@@ -1,0 +1,4 @@
+# ninja log v5
+0	24444	1751361689905609968	/public/home/qianqianjia/code/DynRip-GS/submodules/simple-knn/build/temp.linux-x86_64-cpython-38/ext.o	882c37fcd46329cd
+0	70633	1751361736089612170	/public/home/qianqianjia/code/DynRip-GS/submodules/simple-knn/build/temp.linux-x86_64-cpython-38/simple_knn.o	de8f7ba85f017fdc
+1	280122	1751361945557622158	/public/home/qianqianjia/code/DynRip-GS/submodules/simple-knn/build/temp.linux-x86_64-cpython-38/spatial.o	e9a365ce80bee023
