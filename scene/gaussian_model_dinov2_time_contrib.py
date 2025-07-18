@@ -897,6 +897,37 @@ class GaussianModel:
 
         self.offset_denom[combined_mask] += 1
 
+    # jqq
+    # statis grad information to guide liftting.
+    def training_statis_nocontrib(
+        self,
+        viewspace_point_tensor,
+        opacity,
+        update_filter,
+        offset_selection_mask,
+        anchor_visible_mask,
+    ):
+        # update opacity stats
+        temp_opacity = opacity.clone().view(-1).detach()
+        temp_opacity[temp_opacity<0] = 0
+        
+        temp_opacity = temp_opacity.view([-1, self.n_offsets])
+        self.opacity_accum[anchor_visible_mask] += temp_opacity.sum(dim=1, keepdim=True)
+        
+        # update anchor visiting statis
+        self.anchor_demon[anchor_visible_mask] += 1
+
+        # update neural gaussian statis
+        anchor_visible_mask = anchor_visible_mask.unsqueeze(dim=1).repeat([1, self.n_offsets]).view(-1)
+        combined_mask = torch.zeros_like(self.offset_gradient_accum, dtype=torch.bool).squeeze(dim=1)
+        combined_mask[anchor_visible_mask] = offset_selection_mask
+        temp_mask = combined_mask.clone()
+        combined_mask[temp_mask] = update_filter
+        
+        grad_norm = torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+        self.offset_gradient_accum[combined_mask] += grad_norm
+        self.offset_denom[combined_mask] += 1
+
     def _prune_anchor_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:

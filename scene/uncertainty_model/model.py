@@ -1177,7 +1177,7 @@ class UncertaintyModel(nn.Module):
             f"{prefix}beta": beta.item(),
         }
 
-        return uncertainty.detach(), dino_cosine.detach(), dino_part.detach(), loss_mult1.detach(), loss_mult2.detach(), uncertainty_loss, loss, metrics, loss_mult.detach()
+        return uncertainty.detach(), dino_cosine.detach(), dino_part.detach(), loss_mult1.detach(), loss_mult2.detach(), uncertainty_loss.detach(), loss, metrics, loss_mult.detach()
     
     def qq_get_loss(self, iteration, gt_image, image, prefix="", _cache_entry=None):
         gt_torch = gt_image.unsqueeze(0)
@@ -1188,7 +1188,7 @@ class UncertaintyModel(nn.Module):
         loss_mult = loss_mult.squeeze(0)
         metrics[f"{prefix}uncertainty_loss"] = metrics.pop(f"{prefix}loss")
         metrics.pop(f"{prefix}ssim")
-        return uncertainty, dino_cosine, dino_part, loss_mult1, loss_mult2, uncertainty_loss, loss, metrics, loss_mult
+        return uncertainty, dino_cosine, dino_part, loss_mult1, loss_mult2, uncertainty_loss.detach(), loss, metrics, loss_mult
 
     @staticmethod
     def load(path: str):

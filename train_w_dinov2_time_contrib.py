@@ -150,7 +150,9 @@ def visualize_all_tensors3(
             if tensors[key].ndim == 3 and tensors[key].shape[0] == 3:
                 tensors[key] = np.moveaxis(tensors[key], 0, -1)  # 转换为HWC格式
         else:
-            if tensors[key].ndim == 3 and tensors[key].shape[0] == 1:
+            if tensors[key].ndim == 0:  # 处理0维标量情况
+                tensors[key] = tensors[key].reshape(1, 1)  # 转换为2D张量
+            elif tensors[key].ndim == 3 and tensors[key].shape[0] == 1:
                 tensors[key] = tensors[key].squeeze(0)
     
     # 创建图像和网格布局（3行3列），新增gt和prediction的位置
@@ -406,9 +408,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
             # 这里使用5作为陡度参数，可以根据需要调整
             smooth_p = torch.sigmoid(torch.tensor(5 * (p - 0.5)))
             loss_mult = torch.ones_like(loss_mult3) * (1 - smooth_p) + loss_mult3 * smooth_p
-
             loss_mult4 = loss_mult
-
         else:
             loss_mult4=loss_mult3
 
@@ -440,19 +440,19 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
 
         # 现在*的是 dino_part loss_mult
         
-        # # 将loss_mult4调整为Ll1的大小
-        # loss_mult4 = (dino_part > 0.9).to(dtype=dino_part.dtype)
+        # 将loss_mult4调整为Ll1的大小
+        loss_mult4 = (dino_part < 0.9).to(dtype=dino_part.dtype)
         
-        # # 确保loss_mult4是[B, 1, H', W']格式
-        # loss_mult4_expanded = loss_mult4.unsqueeze(1)
+        # 确保loss_mult4是[B, 1, H', W']格式
+        loss_mult4_expanded = loss_mult4.unsqueeze(1)
         
-        # # 插值到[540, 960]尺寸
-        # loss_mult5 = F.interpolate(loss_mult4_expanded, size=Ll1.shape[1:], mode='nearest').squeeze(1)
+        # 插值到[540, 960]尺寸
+        loss_mult4 = F.interpolate(loss_mult4_expanded, size=Ll1.shape[1:], mode='nearest').squeeze(1)
 
         # loss_mult4= F.interpolate(loss_mult4, size=Ll1.shape[1:], mode='nearest').squeeze(1)
 
 
-        loss = (1.0 - opt.lambda_dssim) * (Ll1 * loss_mult).mean() +  opt.lambda_dssim * (ssim_loss * loss_mult).mean() + uncertainty_loss
+        loss = (1.0 - opt.lambda_dssim) * (Ll1 * loss_mult4).mean() +  opt.lambda_dssim * (ssim_loss * loss_mult4).mean() + uncertainty_loss
         
         Ll1 = Ll1.mean()
         loss.backward()
@@ -652,8 +652,10 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
             # densification
             if iteration < opt.update_until and iteration > opt.start_stat:
                 # add statis
-                # jqq
                 gaussians.training_statis(viewspace_point_tensor, opacity, visibility_filter, offset_selection_mask, voxel_visible_mask, render_pkg['contrib'])
+                
+                # jqq
+                #gaussians.training_statis_nocontrib(viewspace_point_tensor, opacity, visibility_filter, offset_selection_mask, voxel_visible_mask)
                 
                 # densification
                 if iteration > opt.update_from and iteration % opt.update_interval == 0:

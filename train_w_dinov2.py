@@ -88,6 +88,181 @@ def saveRuntimeCode(dst: str) -> None:
     
     print('Backup Finished!')
 
+# jqq 可视化中间结果
+def visualize_all_tensors3(
+    gt,                     # 新增：原始图像
+    prediction,             # 新增：预测图像
+    uncertainty, 
+    dino_cosine, 
+    dino_part, 
+    uncertainty_loss, 
+    loss_mult1, 
+    loss_mult2, 
+    loss_mult3,
+    loss_mult4,
+    save_path=None, 
+    show=True
+):
+    """
+    可视化多个张量并拼接为单张图片（基于原始数据范围映射颜色），新增gt和prediction的可视化
+    
+    参数:
+        gt: 原始图像张量
+        prediction: 预测图像张量
+        uncertainty: 不确定性张量
+        dino_cosine: DINO余弦相似度张量
+        dino_part: 处理后的DINO相似度张量
+        uncertainty_loss: 不确定性损失张量
+        loss_mult1: 损失乘数1
+        loss_mult2: 损失乘数2
+        loss_mult3: 损失乘数3
+        save_path: 保存路径，若为None则不保存
+        show: 是否显示图像
+    """
+
+    # 设置中文字体（支持中文显示）
+    # plt.rcParams["font.family"] = ["SimHei", "WenQuanYi Micro Hei", "Heiti TC"]
+    # # 解决负号显示问题
+    # plt.rcParams["axes.unicode_minus"] = False
+    # 调整全局字体大小（标题、标签等）
+    plt.rcParams["font.size"] = 5
+
+    # 确保所有张量在CPU上并转换为numpy数组
+    tensors = {
+        'gt': gt.cpu().numpy() if isinstance(gt, torch.Tensor) else gt,
+        'prediction': prediction.cpu().numpy() if isinstance(prediction, torch.Tensor) else prediction,
+        'uncertainty': uncertainty.cpu().numpy() if isinstance(uncertainty, torch.Tensor) else uncertainty,
+        'dino_cosine': dino_cosine.cpu().numpy() if isinstance(dino_cosine, torch.Tensor) else dino_cosine,
+        'dino_part': dino_part.cpu().numpy() if isinstance(dino_part, torch.Tensor) else dino_part,
+        'uncertainty_loss': uncertainty_loss.cpu().numpy() if isinstance(uncertainty_loss, torch.Tensor) else uncertainty_loss,
+        'loss_mult1': loss_mult1.cpu().numpy() if isinstance(loss_mult1, torch.Tensor) else loss_mult1,
+        'loss_mult2': loss_mult2.cpu().numpy() if isinstance(loss_mult2, torch.Tensor) else loss_mult2,
+        'loss_mult3': loss_mult3.cpu().numpy() if isinstance(loss_mult3, torch.Tensor) else loss_mult3,
+        'loss_mult4': loss_mult4.cpu().numpy() if isinstance(loss_mult4, torch.Tensor) else loss_mult4
+    }
+    
+    # 确保所有张量是2D或3D（图像数据为3D时保持维度）
+    for key in tensors:
+        if key in ['gt', 'prediction']:
+            if tensors[key].ndim == 4 and tensors[key].shape[0] == 1:
+                tensors[key] = tensors[key].squeeze(0)
+            if tensors[key].ndim == 3 and tensors[key].shape[0] == 3:
+                tensors[key] = np.moveaxis(tensors[key], 0, -1)  # 转换为HWC格式
+        else:
+            if tensors[key].ndim == 0:  # 处理0维标量情况
+                tensors[key] = tensors[key].reshape(1, 1)  # 转换为2D张量
+            elif tensors[key].ndim == 3 and tensors[key].shape[0] == 1:
+                tensors[key] = tensors[key].squeeze(0)
+    
+    # 创建图像和网格布局（3行3列），新增gt和prediction的位置
+    fig = plt.figure(figsize=(14, 5))
+    gs = GridSpec(2, 5, figure=fig, wspace=0.3, hspace=0.4)
+    
+    # 定义每个张量的可视化配置
+    visual_configs = [
+        {
+            'tensor': tensors['gt'],
+            'title': 'Ground Truth',
+            'cmap': None,  # 图像使用原始颜色，不使用颜色映射
+            'vmin': 0,
+            'vmax': 1
+        },
+        {
+            'tensor': tensors['prediction'],
+            'title': 'Prediction',
+            'cmap': None,  # 图像使用原始颜色，不使用颜色映射
+            'vmin': 0,
+            'vmax': 1
+        },
+        {
+            'tensor': tensors['uncertainty'],
+            'title': 'Uncertainty: dino feature of gt',
+            'cmap': 'viridis',
+            'vmin': 0,
+            'vmax': 1
+        },
+        {
+            'tensor': tensors['dino_cosine'],
+            'title': 'dino_cosine',
+            'cmap': 'coolwarm',
+            'vmin': -1,
+            'vmax': 1
+        },
+        {
+            'tensor': tensors['dino_part'],
+            'title': 'dino_part: dino_cosine to [0, 1]',
+            'cmap': 'viridis',
+            'vmin': 0,
+            'vmax': None
+        },
+        {
+            'tensor': tensors['uncertainty_loss'],
+            'title': 'uncertainty_loss = dino_part * dino_downsample',
+            'cmap': 'magma',
+            'vmin': 0,         # 损失范围设为0到动态最大值（自动计算）
+            'vmax': None       # 若需固定最大值，可设为如vmax=5
+        },
+        {
+            'tensor': tensors['loss_mult1'],
+            'title': 'loss_mult1 = 1/(2*uncertainty.pow(2))',
+            'cmap': 'inferno',
+            'vmin': 0,
+            'vmax': 3
+        },
+        {
+            'tensor': tensors['loss_mult2'],
+            'title': 'loss_mult max is 3',
+            'cmap': 'plasma',
+            'vmin': 0,
+            'vmax': 3
+        },
+        {
+            'tensor': tensors['loss_mult3'],
+            'title': '<mean get mask',
+            'cmap': 'binary',  # 二值化结果使用binary映射
+            'vmin': 0,
+            'vmax': 1
+        },
+        {
+            'tensor': tensors['loss_mult4'],
+            'title': 'warmup in loss_mult3',
+            'cmap': 'viridis',  # 二值化结果使用binary映射
+            'vmin': 0,
+            'vmax': 1
+        }
+    ]
+    
+    # 绘制每个张量并统一颜色映射
+    for i, config in enumerate(visual_configs):
+        ax = fig.add_subplot(gs[i])
+        # 计算uncertainty_loss的动态vmax（若未指定）
+        if config['vmax'] is None and config['title'] == 'Uncertainty: dino feature of gt':
+            config['vmax'] = np.percentile(config['tensor'], 99)  # 取99%分位数作为最大值，避免异常值影响
+        im = ax.imshow(config['tensor'], cmap=config['cmap'], 
+                      vmin=config['vmin'], vmax=config['vmax'])
+        ax.set_title(config['title'], fontsize=10)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        # 添加颜色条（每个子图独立，确保数值与颜色一一对应）
+        cbar = fig.colorbar(im, ax=ax, pad=0.02, aspect=20)
+        cbar.ax.tick_params(labelsize=8)  # 调整颜色条标签字体大小
+    
+    plt.tight_layout(pad=0.5)
+    
+
+    # 保存和显示图像
+    if save_path:
+        save_dir = os.path.dirname(save_path)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    
+    return fig
 
 
 # SSIM
@@ -197,10 +372,11 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         gt_image = viewpoint_cam.original_image.cuda()
 
 
-        uncertainty_loss, metrics, loss_mult = gaussians.uncertainty_model.get_loss(scene.model_path, iteration, gt_image, image.detach(), _cache_entry=('train', viewpoint_cam.colmap_id))
+        # uncertainty_loss, metrics, loss_mult = gaussians.uncertainty_model.get_loss(scene.model_path, iteration, gt_image, image.detach(), _cache_entry=('train', viewpoint_cam.colmap_id))
         
-        #uncertainty, dino_cosine, dino_part, loss_mult1, loss_mult2, uncertainty_loss, loss, metrics, loss_mult= gaussians.uncertainty_model.qq_get_loss(iteration, gt_image, image.detach(), _cache_entry=('train', viewpoint_cam.colmap_id))
-        
+        uncertainty, dino_cosine, dino_part, loss_mult1, loss_mult2, uncertainty_loss, loss, metrics, loss_mult= gaussians.uncertainty_model.qq_get_loss(iteration, gt_image, image.detach(), _cache_entry=('train', viewpoint_cam.colmap_id))
+
+
         # 确保 uncertainty_loss 是一个标量
         if uncertainty_loss.dim() > 0:
             uncertainty_loss = uncertainty_loss.mean()
@@ -208,6 +384,7 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         # jqq
             
         # BVI数据集
+        loss_mult = (loss_mult > 0.5).to(dtype=loss_mult.dtype)
             
         # IW数据集
         # 计算loss_mult的平均值
@@ -219,8 +396,12 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
 
         if iteration < opt.uncertainty_warmup_start:
             loss_mult = 1
+            loss_mult4 = torch.ones_like(loss_mult1)  # warmup前 实际*的 loss_mult
         elif iteration < opt.uncertainty_warmup_start + opt.uncertainty_warmup_iters:
+            # p = (iteration - uncertainty_warmup_start) / uncertainty_warmup_iters
+            # loss_mult4 = 1 + p * (loss_mult - 1) # 轮次约束的loss_mult
 
+            # jqq
             p = (iteration - opt.uncertainty_warmup_start) / opt.uncertainty_warmup_iters
             # loss_mult = 1 + p * (loss_mult - 1) # 轮次约束的loss_mult
 
@@ -229,6 +410,11 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
             # 这里使用5作为陡度参数，可以根据需要调整
             smooth_p = torch.sigmoid(torch.tensor(5 * (p - 0.5)))
             torch.ones_like(loss_mult3) * (1 - smooth_p) + loss_mult3 * smooth_p
+            loss_mult = torch.ones_like(loss_mult3) * (1 - smooth_p) + loss_mult3 * smooth_p
+            loss_mult4 = loss_mult
+        else:
+            loss_mult4=loss_mult3
+
 
         if opt.uncertainty_center_mult:
             loss_mult = loss_mult.sub(loss_mult.mean() - 1).clamp(0, 2)
@@ -236,6 +422,9 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
             image = scale_grads(image, loss_mult)
             image_toned = scale_grads(image_toned, loss_mult)
             loss_mult = 1
+
+
+
         
         Ll1 = torch.nn.functional.l1_loss(image, gt_image, reduction='none')
 
@@ -255,12 +444,59 @@ def training(dataset, opt, pipe, dataset_name, testing_iterations, saving_iterat
         # loss = (1.0 - opt.lambda_dssim) * (Ll1 * loss_mult).mean() + opt.lambda_dssim * (ssim_loss * loss_mult).mean() + uncertainty_loss + 0.01*scaling_reg
 
         # 现在*的是 warmup loss_mult
+         # 将loss_mult4调整为Ll1的大小
+        loss_mult4 = (dino_part < 0.9).to(dtype=dino_part.dtype)
+        
+        # 确保loss_mult4是[B, 1, H', W']格式
+        loss_mult4_expanded = loss_mult4.unsqueeze(1)
+        
+        # 插值到[540, 960]尺寸
+        loss_mult4 = F.interpolate(loss_mult4_expanded, size=Ll1.shape[1:], mode='nearest').squeeze(1)
+
+        # loss_mult4= F.interpolate(loss_mult4, size=Ll1.shape[1:], mode='nearest').squeeze(1)
+
+
+        loss = (1.0 - opt.lambda_dssim) * (Ll1 * loss_mult4).mean() +  opt.lambda_dssim * (ssim_loss * loss_mult4).mean() + uncertainty_loss
+        
         loss = (1.0 - opt.lambda_dssim) * (Ll1 * loss_mult).mean() +  opt.lambda_dssim * (ssim_loss * loss_mult).mean() + uncertainty_loss
 
         Ll1 = Ll1.mean()
         loss.backward()
         
         iter_end.record()
+
+        # 可视化所有张量
+        if iteration % 100 == 0:  # 每100次迭代可视化一次
+            
+            # 确保所有张量在CPU上
+            gt_cpu = gt_image.cpu() # gt
+            prediction_cpu = image.cpu() # render
+            uncertainty_cpu = uncertainty.cpu() # dino提取的gt的特征
+            dino_cosine_cpu = dino_cosine.cpu() # DINO 特征的余弦相似度
+            dino_part_cpu = dino_part.cpu() # 将余弦相似度映射到 [0, 1] 范围内
+            uncertainty_loss_cpu = uncertainty_loss.cpu() # uncertainty_loss = dino_part * dino_downsample
+            loss_mult1_cpu = loss_mult1.cpu() # loss_mult1 = 1 / (2 * uncertainty.pow(2))
+            loss_mult2_cpu = loss_mult2.cpu() # loss_mult 的值限制在最大值为 3
+            loss_mult3_cpu = loss_mult3.cpu() # 以平均值为阈值，得到二值mask
+            loss_mult4_cpu = loss_mult4.cpu()
+
+            # 仅在 loss_mult4 存在时传递该参数
+            visualize_kwargs = {
+                'gt': gt_cpu.squeeze(0).detach(),
+                'prediction': prediction_cpu.squeeze(0).detach(),
+                'uncertainty': uncertainty_cpu.squeeze(0).detach(),
+                'dino_cosine': dino_cosine_cpu.squeeze(0).detach(),
+                'dino_part': dino_part_cpu.squeeze(0).detach(),
+                'uncertainty_loss': uncertainty_loss_cpu.squeeze(0).detach(),
+                'loss_mult1': loss_mult1_cpu.squeeze(0).detach(),
+                'loss_mult2': loss_mult2_cpu.squeeze(0).detach(),
+                'loss_mult3': loss_mult3_cpu.squeeze(0).detach(),
+                'loss_mult4': loss_mult4_cpu.squeeze(0).detach(),
+            }
+                
+            visualize_all_tensors3(**visualize_kwargs, save_path=f"{model_path}/mid_result/all_tensors_iter_{iteration}.png")
+        
+
 
 
         # # jqq 保存 uncertainty loss图像
